@@ -1,13 +1,12 @@
 ---
-title: 
-author: 
+title: Blog Template
+author: Andy Clemenko
 notes: https://www.markdownguide.org/basic-syntax/
 ---
 
 # Main Title
 
-Quick abstract.
-
+Add a quick abstract.
 ---
 
 > **Table of Contents**:
@@ -23,7 +22,19 @@ Who are you? Why are you cool?
 
 ## Prerequisites
 
-You must be able to read. :D
+Add any prerequisites if this is going to be a technical guide. You must be able to read. :D
+
+## Setup or Problem
+
+## Solution
+
+### Part 1
+
+### Part 2
+
+#### sub heading
+
+#### best part here
 
 ## Conclusion
 
