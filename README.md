@@ -36,6 +36,19 @@ Add any prerequisites if this is going to be a technical guide. You must be able
 
 #### best part here
 
+```bash
+kubectl apply -f *
+```
+
+or maybe
+
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+```
+
 ## Conclusion
 
 What did they just read.
