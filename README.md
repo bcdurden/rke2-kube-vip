@@ -22,7 +22,7 @@ Who are you? Why are you cool?
 
 ## Prerequisites
 
-Add any prerequisites if this is going to be a technical guide. You must be able to read. :D
+Add any prerequisites if this is going to be a technical guide. Add [docs](https://rancher.com/docs/) example.
 
 ## Setup or Problem
 
