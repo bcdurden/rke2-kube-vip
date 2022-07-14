@@ -4,9 +4,8 @@ author: Andy Clemenko and Brian Durden
 notes: https://www.markdownguide.org/basic-syntax/
 ---
 
-# Main Title
+# Bootstrapping an HA RKE2 Cluster easily without a LoadBalancer
 
-Bootstrapping an HA RKE2 Cluster easily without a LoadBalancer
 ---
 
 > **Table of Contents**:
