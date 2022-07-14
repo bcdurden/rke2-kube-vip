@@ -167,19 +167,18 @@ token: my-shared-secret
 tls-san:
   - rke2a.lol
   - rke2a
+  - 10.0.1.5
   - rke2master.lol
   - rke2master
 ```
 
 ### Configure /etc/hosts
-The last step of prep is to edit the `/etc/hosts` file on all VMs to reflect our table above. Our `/etc/hosts` file for the first VM should look like this on an Ubuntu box. The `rke2master` entry should use the loopback IP (127.0.0.1) on the first VM. Here we are using static-defined IPs without a DNS server and defining `/etc/hosts` on the first VM.
+The last step of prep is to edit the `/etc/hosts` file on all VMs to reflect our table above. Our `/etc/hosts` file for the first VM should look like this on an Ubuntu box. The first VM does not need to know the IP addresses of the other nodes.
 ```console
 root@rke2a:~# cat /etc/hosts
 127.0.0.1 localhost
-10.0.1.2 rke2a
-10.0.1.3 rke2b 
-10.0.1.4 rke2c 
 127.0.0.1 rke2master
+127.0.0.1 rke2a
 
 # The following lines are desirable for IPv6 capable hosts
 ::1 ip6-localhost ip6-loopback
@@ -203,11 +202,48 @@ Kubectl is included as part of the RKE2 install, but it is located in a non-defa
 /var/lib/rancher/rke2/bin/kubectl \
         --kubeconfig /etc/rancher/rke2/rke2.yaml get nodes
 ```
+```console
+root@rke2a:~# /var/lib/rancher/rke2/bin/kubectl         --kubeconfig /etc/rancher/rke2/rke2.yaml get nodes
+NAME    STATUS     ROLES                       AGE   VERSION
+rke2a   NotReady   control-plane,etcd,master   10s   v1.20.15+rke2r2
+```
 
 Once the node is ready, you can inspect the state of the pods:
 ```
 /var/lib/rancher/rke2/bin/kubectl \
         --kubeconfig /etc/rancher/rke2/rke2.yaml get pods --all-namespaces
+```
+```console
+root@rke2a:~# /var/lib/rancher/rke2/bin/kubectl \
+>         --kubeconfig /etc/rancher/rke2/rke2.yaml get pods --all-namespaces
+NAMESPACE     NAME                                                   READY   STATUS      RESTARTS   AGE
+kube-system   cloud-controller-manager-rke2a                         1/1     Running     0          47s
+kube-system   etcd-rke2a                                             1/1     Running     0          23s
+kube-system   helm-install-rke2-canal-zvm5s                          0/1     Completed   0          34s
+kube-system   helm-install-rke2-coredns-8rxkk                        0/1     Completed   0          34s
+kube-system   helm-install-rke2-ingress-nginx-kvfv9                  0/1     Pending     0          34s
+kube-system   helm-install-rke2-metrics-server-z2pvz                 0/1     Pending     0          34s
+kube-system   kube-apiserver-rke2a                                   1/1     Running     0          10s
+kube-system   kube-controller-manager-rke2a                          1/1     Running     0          47s
+kube-system   kube-proxy-rke2a                                       1/1     Running     0          43s
+kube-system   kube-scheduler-rke2a                                   1/1     Running     0          48s
+kube-system   kube-vip-ds-hwqdc                                      1/1     Running     0          8s
+kube-system   rke2-canal-cqkc4                                       1/2     Running     0          22s
+kube-system   rke2-coredns-rke2-coredns-7655b75678-b4rwh             0/1     Pending     0          22s
+kube-system   rke2-coredns-rke2-coredns-autoscaler-c9f9f7c49-wmjbf   0/1     Pending     0          22s
+```
+
+You can then verify the local network interface has bound to the VIP:
+```console
+root@rke2a:~# ip addr
+2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc fq_codel state UP group default qlen 1000
+    link/ether 0a:2a:07:70:7d:71 brd ff:ff:ff:ff:ff:ff
+    inet 10.2.11.198/16 brd 10.2.255.255 scope global dynamic enp1s0
+       valid_lft 85046sec preferred_lft 85046sec
+    inet 10.2.0.5/32 scope global enp1s0
+       valid_lft forever preferred_lft forever
+    inet6 fe80::82a:7ff:fe70:7d71/64 scope link 
+       valid_lft forever preferred_lft forever
 ```
 
 ### Adding Nodes
@@ -269,11 +305,23 @@ root@rke2b:~# systemctl enable rke2-server.service
 root@rke2b:~# systemctl start rke2-server.service
 ```
 
+Just as before, you can query the state of the node once everything is bootstrapped, you should see all nodes as part of the cluster. In this example on rke2b, we see two:
+```console
+root@rke2b:~# /var/lib/rancher/rke2/bin/kubectl         --kubeconfig /etc/rancher/rke2/rke2.yaml get nodes
+NAME    STATUS   ROLES                       AGE     VERSION
+rke2a   Ready    control-plane,etcd,master   5m58s   v1.20.15+rke2r2
+rke2b   Ready    control-plane,etcd,master   31s     v1.20.15+rke2r2
+```
+
 ## The Solution (Cloud-Init Provisioning)
 That's a big list of stuff to do and you can imagine it can become very toilsome to manage at scale. Let's leverage our VM provisioner to automate all this effort and turn it into a point and click affair!
 
 In this example, I'll use Harvester to build a cloud-init that I can use as a template for each node.
 
+TODO
+
+## Get Kubeconfig
+Grab the kubeconfig from one of the master nodes `/etc/rancher/rke2/rke2.yaml` and ensure you replace `127.0.0.1` with your kube-vip IP address.
 
 ## Conclusion
 

@@ -4,9 +4,10 @@ write_files:
   - path: /etc/rancher/rke2/config.yaml
     owner: root
     content: |
+      token: my-shared-secret
       tls-san:
-        - rke2a.lol
         - rke2a
+        - 10.0.1.5
         - rke2master.lol
         - rke2master
   - path: /etc/hosts
@@ -14,9 +15,7 @@ write_files:
     content: |
       127.0.0.1 localhost
       127.0.0.1 rke2master
-      10.0.1.2 rke2a
-      10.0.1.3 rke2b 
-      10.0.1.4 rke2c
+      127.0.0.1 rke2a
 
       # The following lines are desirable for IPv6 capable hosts
       ::1 ip6-localhost ip6-loopback
@@ -34,8 +33,21 @@ runcmd:
     - qemu-guest-agent.service
   - curl -sfL https://get.rke2.io | INSTALL_RKE2_CHANNEL=v1.20 sh -
   - mkdir -p /var/lib/rancher/rke2/server/manifests/
-  - wget https://kube-vip.io/manifests/rbac.yaml -O /var/lib/rancher/rke2/server/manifests/kube-vip-rbac.yaml
-  - curl -sL kube-vip.io/k3s |  vipAddress=10.2.0.5 vipInterface=enp1s0 sh | sudo tee /var/lib/rancher/rke2/server/manifests/vip.yaml
+  - >-
+    wget https://kube-vip.io/manifests/rbac.yaml -O
+    /var/lib/rancher/rke2/server/manifests/kube-vip-rbac.yaml
+  - >-
+    curl -sL kube-vip.io/k3s |  vipAddress=10.0.1.5 vipInterface=eth0 sh |
+    sudo tee /var/lib/rancher/rke2/server/manifests/vip.yaml
   - sed -i 's/k3s/rke2/g' /var/lib/rancher/rke2/server/manifests/vip.yaml
   - systemctl enable rke2-server.service
   - systemctl start rke2-server.service
+  - >-
+    wget
+    https://github.com/mikefarah/yq/releases/download/v4.25.3/yq_linux_amd64 -O
+    /tmp/yq
+  - install /tmp/yq /usr/local/bin/yq
+ssh_authorized_keys:
+  - >-
+    ssh-rsa
+    AAAAB3NzaC1yc2EAAAADAQABAAABAQDZViyH636xpBFjteZDbEc3HrOIREuHcd6hjIq75G9zoisuq+ckjFeNZy0ucP4GohImoS8gtJeZalLQVDyxGr3aJ5W4mZHwzxtp+kqAfuBWQvE/An6xTlGVWBWFtHn2a24OTk33hGx88JBu+1FLqMlyud0jyZUuPbfbyP+DQpJB/39RTTd7+owJDRim7EBBG3suPsFuETM3KQ+c875OClcBoFor/zb9koPrqrtDpM1M16wVsVMQ05UfAVUN5iKvX2R0JYYlWBBaaiIldyI7EqTwYxdEJLWEbnd/9Thv5DdRctA9Bj/lzUg6BVgkxh9t7Ryoch9WFO62LSh61DJwnQRb

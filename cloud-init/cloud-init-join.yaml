@@ -7,18 +7,18 @@ write_files:
       token: my-shared-secret
       server: https://rke2master:9345
       tls-san:
-        - rke2b.lol
         - rke2b
+        - rke2c
+        - 10.0.1.5
         - rke2master.lol
         - rke2master
   - path: /etc/hosts
     owner: root
     content: |
       127.0.0.1 localhost
-      10.0.1.2 rke2a
-      10.0.1.3 rke2b 
-      10.0.1.4 rke2c
       10.0.1.5 rke2master
+      127.0.0.1 rke2b
+      127.0.0.1 rke2c
 
       # The following lines are desirable for IPv6 capable hosts
       ::1 ip6-localhost ip6-loopback
@@ -37,3 +37,7 @@ runcmd:
   - curl -sfL https://get.rke2.io | INSTALL_RKE2_CHANNEL=v1.20 sh -
   - systemctl enable rke2-server.service
   - systemctl start rke2-server.service
+ssh_authorized_keys:
+  - >-
+    ssh-rsa
+    AAAAB3NzaC1yc2EAAAADAQABAAABAQDZViyH636xpBFjteZDbEc3HrOIREuHcd6hjIq75G9zoisuq+ckjFeNZy0ucP4GohImoS8gtJeZalLQVDyxGr3aJ5W4mZHwzxtp+kqAfuBWQvE/An6xTlGVWBWFtHn2a24OTk33hGx88JBu+1FLqMlyud0jyZUuPbfbyP+DQpJB/39RTTd7+owJDRim7EBBG3suPsFuETM3KQ+c875OClcBoFor/zb9koPrqrtDpM1M16wVsVMQ05UfAVUN5iKvX2R0JYYlWBBaaiIldyI7EqTwYxdEJLWEbnd/9Thv5DdRctA9Bj/lzUg6BVgkxh9t7Ryoch9WFO62LSh61DJwnQRb
