@@ -149,8 +149,11 @@ status:
 ### Configure RKE2
 Next we need to create a basic rke2 configuration file. This is picked up by our later RKE2 service init. We only need to create a `/etc/rancher/rke2` directory and then define a simple yaml file inside. This is only necessary on the first VM.
 ```console
+export TOKEN="my-shared-secret"
+
 mkdir -p /etc/rancher/rke2
 touch /etc/rancher/rke2/config.yaml
+echo "token: ${TOKEN}" >> /etc/rancher/rke2/config.yaml
 echo "tls-san:" >> /etc/rancher/rke2/config.yaml 
 echo "  - ${HOSTNAME}.lol" >> /etc/rancher/rke2/config.yaml
 echo "  - ${HOSTNAME}" >> /etc/rancher/rke2/config.yaml
