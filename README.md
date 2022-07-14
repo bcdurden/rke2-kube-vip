@@ -11,6 +11,7 @@ notes: https://www.markdownguide.org/basic-syntax/
 > **Table of Contents**:
 > * [Whoami](#whoami)
 > * [Prerequisites](#prerequisites)
+> * [Manual Provisioning](#ManualProvisioning)
 > * [Conclusion](#conclusion)
 
 ---
@@ -26,7 +27,7 @@ The only pre-req here, other than having access to VMs for this task (I use [Har
 ## The Problem
 On-prem K8S installations tend to lack cloud-native services like Load Balancing. When building an HA (high availability) cluster, the K8S api-server must be hosted across multiple control-plane/master nodes in the event of a failure. Traditionally for K8S deployments and services, this would require usage of MetalLB, HAProxy, nginx, or some loadbalancer service/daemonset. Unfortunately this case cannot work for the api-server as there would be a circular dependency introduced as these services are deployed via the api-server, they are dynamic deployments/daemonsets/statefulsets.
 
-## The Solution (Manual Provisioning)
+## The Solution
 
 Enter kube-vip, the solution to this problem as it can be run as a static Pod or static DaemonSet as part of the first RKE2 master. Utilizing code already supported in K3S, we can inject this static DaemonSet and do a quick change/replace of some minimal config items and we are good. It's easy enough to drop into any Ansible playbook or using a more cloud-native approach: cloud-init.
 
@@ -51,6 +52,8 @@ rke2master 10.0.1.5
 ```
 
 As we progress below, we'll be defining variables and such assuming we wish to construct this into a script and a cloud-init within our VM provisioner.
+
+## Manual Provisioning
 
 ### Grab the RKE2 goods
 Firstly, we need to grab the RKE2 goods for our VM. This needs to be done on all 3 VMs. That's easy to do using the `get.rke2.io` endpoint:
