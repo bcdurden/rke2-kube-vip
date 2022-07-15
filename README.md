@@ -1,7 +1,6 @@
 ---
 title: Using kube-vip with RKE2 Api-Server
-author: Andy Clemenko and Brian Durden
-notes: https://www.markdownguide.org/basic-syntax/
+author: Brian Durden
 ---
 
 # Bootstrapping an HA RKE2 Cluster easily without a LoadBalancer
@@ -9,16 +8,12 @@ notes: https://www.markdownguide.org/basic-syntax/
 ---
 
 > **Table of Contents**:
-> * [Whoami](#whoami)
 > * [Prerequisites](#prerequisites)
 > * [Manual Provisioning](#manual)
+> * [Cloud Config Provisioning](#cloud-config)
 > * [Conclusion](#conclusion)
 
 ---
-
-## Whoami
-
-Who are you? Why are you cool?
 
 ## Prerequisites
 
@@ -313,18 +308,198 @@ rke2a   Ready    control-plane,etcd,master   5m58s   v1.20.15+rke2r2
 rke2b   Ready    control-plane,etcd,master   31s     v1.20.15+rke2r2
 ```
 
-## The Solution (Cloud-Init Provisioning)
+## The Solution (Cloud-Init Provisioning using Harvester!)
 That's a big list of stuff to do and you can imagine it can become very toilsome to manage at scale. Let's leverage our VM provisioner to automate all this effort and turn it into a point and click affair!
 
-In this example, I'll use Harvester to build a cloud-init that I can use as a template for each node.
+In this example, I'll use Harvester to build a cloud-init that I can use as a template for each node. What we do here is capture the above steps in a more script-y format and drop them into a cloud-init yaml spec. 
 
-TODO
+### Create First VM
+Inspect the [cloud-init-main.yaml](cloud-init/cloud-init-main.yaml) file and see how we narrowed down the scope of the change to something that needed less manual input, specifically in the `/etc/hosts` and `/etc/rancher/rke2/config.yaml` specs under `write_files`. Instead of using `touch`, we are using a feature of cloud-init to create a file with specific contents in a specific location.
+
+#### /etc/hosts
+Under `write_files` we can see `/etc/hosts` in the spec below. Please note that the primary VM only needs to know how to reach itself. All other comms are initiated by the other two nodes, only they need actual IP addresses. And in that case, they only need to know how to reach rke2master (which is a VIP address and static). Here we ensure that the first node can always reach itself, this is important for kube-vip to initialize.
+```yaml
+  - path: /etc/hosts
+    owner: root
+    content: |
+      127.0.0.1 localhost
+      127.0.0.1 rke2master
+      127.0.0.1 rke2a
+
+      # The following lines are desirable for IPv6 capable hosts
+      ::1 ip6-localhost ip6-loopback
+      fe00::0 ip6-localnet
+      ff00::0 ip6-mcastprefix
+      ff02::1 ip6-allnodes
+      ff02::2 ip6-allrouters
+      ff02::3 ip6-allhosts
+```
+
+#### /etc/rancher/rke2/config.yaml
+Also under `write_files` we have the `config.yaml` file that defines the tls-san endpoints as well as a shared secret. This secret is a string literal, it does not reference another secret. This token needs to also be present in the `config.yaml` file on the other two nodes. Also note that we are using an IP-SAN here to ensure the kubeconfig that gets generated allows for the hostname to optionally be the static IP provisioned by `kube-vip`.
+```yaml
+  - path: /etc/rancher/rke2/config.yaml
+    owner: root
+    content: |
+      token: my-shared-secret
+      tls-san:
+        - rke2a
+        - 10.0.1.5
+        - rke2master.lol
+        - rke2master
+```
+
+Creating a VM in Harvester is super easy, and if we really wanted to make this a productionized process, we would create templates for these cloud configurations as well as the VM spec. However, this is just a basic implementation and its more important to highlight the solution, and not any gold-plating that can go on after.
+
+I'm using a bone-stock Ubuntu 20.04 cloud image from Canonical. You can add this via the Images tab and just add a URL-based link to `https://cloud-images.ubuntu.com/releases/focal/release/ubuntu-20.04-server-cloudimg-amd64.img`. Everything else should autofill.
+
+#### VM Create
+The following steps can be followed for all VMs as their baselines are identical other than their names. Their names are very important as this translates into the hostname of the VM instance itself.
+
+Go to the `Virtual Machines` tab and click `create`. The VM creation UI interface will show. Name the VM `rke2a`, `rke2b`, or `rke2c` based on our manual example, give it 2 CPUs and 4GB of memory, add an SSH key in as well (you'll need it).
+![create-basic](img/create-basic.png)
+
+Go to `Volumes`, and ensure an `Image Volume` exists, if not create one and delete the original. Choose your stock cloud image and set the size to ~20-40gb.
+![create-volume](img/create-volume.png)
+
+Go to `Networks`, and ensure you choose the network that allows for static IP claims.
+![create-network](img/create-network.png)
+
+#### Cloud-Config
+In Advanced Options, we inject our cloud config into the User Data field. In this case, we are configuring the primary VM sowe are using the main yaml spec, which can be found [here](cloud-init/cloud-init-main.yaml).
+![create-cloud-main](img/create-cloud-main.png)
+
+#### Start the VM
+Now all the fields have been filled, go ahead and click the `create` button at the bottom. And we'll wait for the VM to start, get an IP address, and bootstrap the first node from the cloud-config we just specified. I used a different IP range in my own demo rig so don't be confused by the IP address in the status.
+![create-status](img/create-status-primary.png)
+
+Once the VM starts, we can SSH into it and verify that the VIP we wanted is bound to the correct interface. This is a good way of ensuring that kube-vip started successfully! Also, in this example I used a VIP of 10.2.0.5 in my demo rig and the network interface is `enp1s0`. We can see below that kube-vip successfully bound its IP.
+```console
+root@rke2a:~# ip addr
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+    inet 127.0.0.1/8 scope host lo
+       valid_lft forever preferred_lft forever
+    inet6 ::1/128 scope host 
+       valid_lft forever preferred_lft forever
+2: enp1s0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc fq_codel state UP group default qlen 1000
+    link/ether 06:f7:30:f9:35:0a brd ff:ff:ff:ff:ff:ff
+    inet 10.2.11.198/16 brd 10.2.255.255 scope global dynamic enp1s0
+       valid_lft 86136sec preferred_lft 86136sec
+    inet 10.2.0.5/32 scope global enp1s0
+       valid_lft forever preferred_lft forever
+```
+
+### Create Remaining VMs
+Following the steps outlined above, create the other two VMs named `rke2b` and `rke2c` with exception of the cloud-init step. Instead of using the main spec, use the join spec located [here](cloud-init/cloud-init-join.yaml). I'll cover the differences below. See the image showing all 3 VMs running, and understand the IP differences here are due to the demo rig's setup (a 10.2/16 CIDR with DHCP vs static).
+![create-all](img/create-all.png)
+
+#### /etc/hosts
+On the joining nodes, our `/etc/hosts` file looks slightly different. As I mentioned earlier, the joining nodes are the only nodes that need to know how to reach `rke2master/rke2a`. That is obvious in the spec below. Note that the rke2master entry is using the VIP address and both rke2b and rke2c are using a loopback address. This is to ensure this same `/etc/hosts` file can be used on either VM. Each node will be capable of reaching back to the main node as well as communicate with themselves.
+```yaml
+  - path: /etc/hosts
+    owner: root
+    content: |
+      127.0.0.1 localhost
+      10.0.1.5 rke2master
+      127.0.0.1 rke2b
+      127.0.0.1 rke2c
+
+      # The following lines are desirable for IPv6 capable hosts
+      ::1 ip6-localhost ip6-loopback
+      fe00::0 ip6-localnet
+      ff00::0 ip6-mcastprefix
+      ff02::1 ip6-allnodes
+      ff02::2 ip6-allrouters
+      ff02::3 ip6-allhosts
+```
+
+#### /etc/rancher/rke2/config.yaml
+Here we are setting the rke2 config for the cluster on the joining nodes, so we've included the same token defined for the primary VM as well as including a new line `server` to instruct the node that it will need to join a cluster already running at that address. Note that it is not using a 'real' URL, but is using an entry defined in its own `/etc/hosts` file above.
+```yaml
+  - path: /etc/rancher/rke2/config.yaml
+    owner: root
+    content: |
+      token: my-shared-secret
+      server: https://rke2master:9345
+      tls-san:
+        - rke2b
+        - rke2c
+        - 10.0.1.5
+        - rke2master.lol
+        - rke2master
+```
+
+### Verifying the Join
+Once the other VMs have had time to start and join, we can verify the whole cluster is running with 3 master nodes by hopping onto the primary VM and running our commands as we did in the manual example. Here we can see a successful joining.
+```console
+root@rke2a:~# /var/lib/rancher/rke2/bin/kubectl \
+>         --kubeconfig /etc/rancher/rke2/rke2.yaml get nodes
+NAME    STATUS   ROLES                       AGE   VERSION
+rke2a   Ready    control-plane,etcd,master   14m   v1.20.15+rke2r2
+rke2b   Ready    control-plane,etcd,master   57s   v1.20.15+rke2r2
+rke2c   Ready    control-plane,etcd,master   25s   v1.20.15+rke2r2
+```
+
+The last step is to grab the kubeconfig onto our local machine and do an IP address change to the kube-vip address.
 
 ## Get Kubeconfig
-Grab the kubeconfig from one of the master nodes `/etc/rancher/rke2/rke2.yaml` and ensure you replace `127.0.0.1` with your kube-vip IP address.
+Grab the kubeconfig from one of the master nodes `/etc/rancher/rke2/rke2.yaml` and ensure you replace `127.0.0.1` with your kube-vip IP address (in our example, that's `10.0.1.5`, but on my demo rig that is 10.2.0.5).
+```console
+ubuntu@rke2a:~$ sudo cp /etc/rancher/rke2/rke2.yaml config
+ubuntu@rke2a:~$ sudo chown ubuntu:ubuntu config
+ubuntu@rke2a:~$ exit
+logout
+Connection to 10.2.11.198 closed.
+bdurden@bdurden-XPS-13-9370:~/rancher$ scp ubuntu@10.2.11.198:./config ~/.kube/config
+config                                                                                100% 2969   648.3KB/s   00:00 
+bdurden@bdurden-XPS-13-9370:~/rancher$ sed -ie 's/127.0.0.1/10.2.0.5/g' ~/.kube/config
+bdurden@bdurden-XPS-13-9370:~/rancher$ kubectl get nodes
+NAME    STATUS   ROLES                       AGE     VERSION
+rke2a   Ready    control-plane,etcd,master   19m     v1.20.15+rke2r2
+rke2b   Ready    control-plane,etcd,master   5m7s    v1.20.15+rke2r2
+rke2c   Ready    control-plane,etcd,master   4m35s   v1.20.15+rke2r2
+bdurden@bdurden-XPS-13-9370:~/rancher$ kubectl get po -A
+NAMESPACE     NAME                                                   READY   STATUS      RESTARTS   AGE
+kube-system   cloud-controller-manager-rke2a                         1/1     Running     0          19m
+kube-system   cloud-controller-manager-rke2b                         1/1     Running     0          5m50s
+kube-system   cloud-controller-manager-rke2c                         1/1     Running     0          5m49s
+kube-system   etcd-rke2a                                             1/1     Running     0          19m
+kube-system   etcd-rke2b                                             1/1     Running     0          6m7s
+kube-system   etcd-rke2c                                             1/1     Running     0          5m36s
+kube-system   helm-install-rke2-canal-ll2q8                          0/1     Completed   0          20m
+kube-system   helm-install-rke2-coredns-kwv7r                        0/1     Completed   0          20m
+kube-system   helm-install-rke2-ingress-nginx-cfqvp                  0/1     Completed   0          20m
+kube-system   helm-install-rke2-metrics-server-mzvsm                 0/1     Completed   0          20m
+kube-system   kube-apiserver-rke2a                                   1/1     Running     0          19m
+kube-system   kube-apiserver-rke2b                                   1/1     Running     0          5m43s
+kube-system   kube-apiserver-rke2c                                   1/1     Running     0          5m23s
+kube-system   kube-controller-manager-rke2a                          1/1     Running     0          19m
+kube-system   kube-controller-manager-rke2b                          1/1     Running     0          5m37s
+kube-system   kube-controller-manager-rke2c                          1/1     Running     0          5m50s
+kube-system   kube-proxy-rke2a                                       1/1     Running     0          19m
+kube-system   kube-proxy-rke2b                                       1/1     Running     0          5m37s
+kube-system   kube-proxy-rke2c                                       1/1     Running     0          5m49s
+kube-system   kube-scheduler-rke2a                                   1/1     Running     0          19m
+kube-system   kube-scheduler-rke2b                                   1/1     Running     0          5m39s
+kube-system   kube-scheduler-rke2c                                   1/1     Running     0          5m50s
+kube-system   kube-vip-ds-gj444                                      1/1     Running     0          5m31s
+kube-system   kube-vip-ds-qsq8w                                      1/1     Running     0          19m
+kube-system   kube-vip-ds-r8dzp                                      1/1     Running     0          6m3s
+kube-system   rke2-canal-hzrwm                                       2/2     Running     0          19m
+kube-system   rke2-canal-n8nxs                                       2/2     Running     0          6m23s
+kube-system   rke2-canal-pds62                                       2/2     Running     0          5m51s
+kube-system   rke2-coredns-rke2-coredns-7655b75678-6qwzt             1/1     Running     0          6m16s
+kube-system   rke2-coredns-rke2-coredns-7655b75678-klmp6             1/1     Running     0          19m
+kube-system   rke2-coredns-rke2-coredns-autoscaler-c9f9f7c49-mc7zn   1/1     Running     0          19m
+kube-system   rke2-ingress-nginx-controller-ht7gs                    1/1     Running     0          6m3s
+kube-system   rke2-ingress-nginx-controller-t8w7d                    1/1     Running     0          5m31s
+kube-system   rke2-ingress-nginx-controller-wfmxs                    1/1     Running     0          19m
+kube-system   rke2-metrics-server-7fdddc8c67-fbqmj                   1/1     Running     0          19m
+```
 
 ## Conclusion
 
-What did they just read.
+While the steps above are long to describe, they are actually very quick/easy in practice. All we're doing is pulling down a kube-vip config from official K3S channels and re-purposing it for RKE2. Now go try and reproduce in your own environment! These cloud-init configurations and manual steps should work on nearly any Linux-based OS!
 
 ![success](img/success.jpg)

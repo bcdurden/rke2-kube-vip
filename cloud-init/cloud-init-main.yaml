@@ -42,11 +42,6 @@ runcmd:
   - sed -i 's/k3s/rke2/g' /var/lib/rancher/rke2/server/manifests/vip.yaml
   - systemctl enable rke2-server.service
   - systemctl start rke2-server.service
-  - >-
-    wget
-    https://github.com/mikefarah/yq/releases/download/v4.25.3/yq_linux_amd64 -O
-    /tmp/yq
-  - install /tmp/yq /usr/local/bin/yq
 ssh_authorized_keys:
   - >-
     ssh-rsa
