@@ -17,23 +17,25 @@ author: Brian Durden
 
 ## Prerequisites
 * HCI - HyperConverged Infrastructure (Harvester)
-* OS Image for VM (Ubuntu 22.04 LTS)
+* OS Image for VM (Ubuntu 20.04 LTS)
 * RKE2 (obviously)
 
-In this example, I use [Harvester as my HCI](https://github.com/harvester/harvester). Other than it being a very lightweight HCI that runs on anything, it supports cloud-init right out of the box as a main feature. This makes working with cloud images from various Linux distributions a very trivial thing. I also use Canonical's Ubuntu 22.04 LTS, which at the time of this writing is the latest LTS release. None of these tools are doctored in any kind of way, they're just what you get OTS.
+In this example, I use [Harvester as my HCI](https://github.com/harvester/harvester). Other than it being a very lightweight HCI that runs on anything, it supports cloud-init right out of the box as a main feature. This makes working with cloud images from various Linux distributions a very trivial thing. I also use Canonical's Ubuntu 20.04 LTS. None of these tools are doctored in any kind of way, they're just what you get OTS.
 
 ### General
 
 ## The Problem
 On-prem K8S installations tend to lack built-in cloud-native services like `Load Balancing`. For those unwaware, a load balancer is a running instance of software (usually on a VM) that 'listens' for network traffic and then routes that traffic to multiple destinations depending on various factors. 
 
-TODO LoadBalancer Diagram
+### Load Balancing
+![LoadBalancer Diagram](https://www.cloud4u.com/upload/medialibrary/5a6/0_CCK15OF3DizmOITk.png)
 
 It's primary use is to define a single ingress point that rarely changes and intelligently routes/balances traffic to endpoints running 'behind' it. Sometimes it merely routes in a round-robin approach, other times it will split traffic based on many other factors. Load Balancing itself is VERY important when it comes to High Availability (HA) services. As there may be multiple instances of a single service running, a Load Balancer provides a way to both split the load of traffic as well as handling the case of nodes going down. 
 
 If we were in AWS, Azure, GCP, etc; we'd be getting the benefit of their cloud-provider services when we need things like a Load Balancer running. Various K8S services running within the cluster have the capability to speak to AWS, for instance, and request a LoadBalancer be created. As on-prem solutions can vary so wildly, we need a solution that works more generally instead of being specific for a cloud.
 
-Further, when building an HA (high availability) cluster, the K8S api-server must be hosted across multiple control-plane/master nodes in the event of a failure. Traditionally for K8S deployments and services, this would require usage of MetalLB, HAProxy, nginx, or some loadbalancer service/daemonset. Unfortunately this case cannot work for the api-server as there would be a circular dependency introduced. While nodes themselves can run static pods or containers locally, services like MetalLB are dynamic and created as a cluster object, not owned by a specific node. 
+### High Availability Clusters
+Further, when building an HA (high availability) cluster, the K8S api-server must be hosted across multiple control-plane/master nodes in the event of a failure. Traditionally for applications running inside of an already provisioned K8S cluster, this would require usage of MetalLB, HAProxy, nginx, or some other loadbalancer service/daemonset. Unfortunately this case cannot work for the api-server as there would be a circular dependency introduced. While nodes themselves can run static pods or containers locally, services like MetalLB are dynamic and created as a cluster object, not owned by a specific node. 
 
 Dynamic objects like this are created and deployed via the api-server. So confusingly, we would need the api-server to spin up a load balancing service to be used for contacting the api-server. This is your circular dependency. We need something that starts as part of the node provisioning and can bind to a static IP address all before the cluster is running.
 
@@ -245,7 +247,7 @@ kube-system   rke2-coredns-rke2-coredns-7655b75678-b4rwh             0/1     Pen
 kube-system   rke2-coredns-rke2-coredns-autoscaler-c9f9f7c49-wmjbf   0/1     Pending     0          22s
 ```
 
-You can then verify the local network interface has bound to the VIP:
+You can then verify the local network interface has bound to the VIP (note my static IP is 10.2.0.5 in my lab):
 ```console
 root@rke2a:~# ip addr
 2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc fq_codel state UP group default qlen 1000
@@ -383,7 +385,7 @@ Go to `Networks`, and ensure you choose the network that allows for static IP cl
 ![create-network](img/create-network.png)
 
 #### Cloud-Config
-In Advanced Options, we inject our cloud config into the User Data field. In this case, we are configuring the primary VM sowe are using the main yaml spec, which can be found [here](cloud-init/cloud-init-main.yaml).
+In Advanced Options, we inject our cloud config into the User Data field. In this case we are configuring the primary VM, so we are using the main yaml spec, which can be found [here](cloud-init/cloud-init-main.yaml).
 ![create-cloud-main](img/create-cloud-main.png)
 
 #### Start the VM
