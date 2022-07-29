@@ -16,20 +16,37 @@ author: Brian Durden
 ---
 
 ## Prerequisites
+* HCI - HyperConverged Infrastructure (Harvester)
+* OS Image for VM (Ubuntu 22.04 LTS)
+* RKE2 (obviously)
 
-The only pre-req here, other than having access to VMs for this task (I use [Harvester](https://github.com/harvester/harvester) here is either control over DNS entries for each of your nodes or just adding them into an /etc/hosts file on each node. This assumes linux-based VMs, I used Ubuntu 20.04 LTS. This can work in any VM provisioner that supports cloud-init or just lets you SSH in to run a script.
+In this example, I use [Harvester as my HCI](https://github.com/harvester/harvester). Other than it being a very lightweight HCI that runs on anything, it supports cloud-init right out of the box as a main feature. This makes working with cloud images from various Linux distributions a very trivial thing. I also use Canonical's Ubuntu 22.04 LTS, which at the time of this writing is the latest LTS release. None of these tools are doctored in any kind of way, they're just what you get OTS.
+
+### General
 
 ## The Problem
-On-prem K8S installations tend to lack cloud-native services like Load Balancing. When building an HA (high availability) cluster, the K8S api-server must be hosted across multiple control-plane/master nodes in the event of a failure. Traditionally for K8S deployments and services, this would require usage of MetalLB, HAProxy, nginx, or some loadbalancer service/daemonset. Unfortunately this case cannot work for the api-server as there would be a circular dependency introduced as these services are deployed via the api-server, they are dynamic deployments/daemonsets/statefulsets.
+On-prem K8S installations tend to lack built-in cloud-native services like `Load Balancing`. For those unwaware, a load balancer is a running instance of software (usually on a VM) that 'listens' for network traffic and then routes that traffic to multiple destinations depending on various factors. 
+
+TODO LoadBalancer Diagram
+
+It's primary use is to define a single ingress point that rarely changes and intelligently routes/balances traffic to endpoints running 'behind' it. Sometimes it merely routes in a round-robin approach, other times it will split traffic based on many other factors. Load Balancing itself is VERY important when it comes to High Availability (HA) services. As there may be multiple instances of a single service running, a Load Balancer provides a way to both split the load of traffic as well as handling the case of nodes going down. 
+
+If we were in AWS, Azure, GCP, etc; we'd be getting the benefit of their cloud-provider services when we need things like a Load Balancer running. Various K8S services running within the cluster have the capability to speak to AWS, for instance, and request a LoadBalancer be created. As on-prem solutions can vary so wildly, we need a solution that works more generally instead of being specific for a cloud.
+
+Further, when building an HA (high availability) cluster, the K8S api-server must be hosted across multiple control-plane/master nodes in the event of a failure. Traditionally for K8S deployments and services, this would require usage of MetalLB, HAProxy, nginx, or some loadbalancer service/daemonset. Unfortunately this case cannot work for the api-server as there would be a circular dependency introduced. While nodes themselves can run static pods or containers locally, services like MetalLB are dynamic and created as a cluster object, not owned by a specific node. 
+
+Dynamic objects like this are created and deployed via the api-server. So confusingly, we would need the api-server to spin up a load balancing service to be used for contacting the api-server. This is your circular dependency. We need something that starts as part of the node provisioning and can bind to a static IP address all before the cluster is running.
 
 ## The Solution
 
-Enter kube-vip, the solution to this problem as it can be run as a static Pod or static DaemonSet as part of the first RKE2 master. Utilizing code already supported in K3S, we can inject this static DaemonSet and do a quick change/replace of some minimal config items and we are good. It's easy enough to drop into any Ansible playbook or using a more cloud-native approach: cloud-init.
+Enter kube-vip, the solution to this problem as it can be run as a static Pod or static DaemonSet as part of the first RKE2 master. Utilizing code already supported in *K3S*, we can inject this static DaemonSet to our node's manifest directory and we are good. It's easy enough to drop into any Ansible playbook or using a more cloud-native approach: cloud-init.
 
-A VIP is short for a Virtual-IP and is common industry vernacular. Essentially a single network interface (such as eth0 for instance) binds to multiple IP addresses instead of just one. If you are using DHCP for VM IP assignment, please ensure there are static IPs available to be claimed as well. For instance, on my workload setup, the first 10 IP addresses are static and my DHCP server only assigns IPs from x.y.z.12 through x.y.z.254.
+A VIP is short for a Virtual-IP (pronounced 'vip', not V-I-P) and is common industry vernacular. Essentially a single network interface (such as eth0 for instance) on the VM binds to multiple IP addresses instead of just one. If you are using DHCP for VM IP assignment, please ensure there are static IPs available to be claimed as well. For instance, on my workload setup, the first 10 IP addresses are static and my DHCP server only assigns IPs from x.y.z.12 through x.y.z.254.
+
+Below you'll find the manual way of provisioning nodes which does more of a dive into how we are building things. I highly recommend at least trying to understand what's going on there. In the real world, you'll never do that but it helps to understand the process. Past that, there's a a Cloud-Init provisioning run-through that is significantly more tailored to cloud-native provisioning. This is where you can tie the [cloud-init config](cloud-init/cloud-init-main.yaml) into your own system and repeat this example!
 
 ## Prep
-In this guide, I will be setting up a 3-node HA RKE2 cluster. I use the `.lol` domain but swap out for the domain of your choosing. 
+In this guide, I will be setting up a 3-node HA RKE2 cluster. I use the `.lol` domain but swap out for the domain of your choosing. You definitely want to have control over those DNS entries for the domain.
 
 | Host       | Type       | IP       | Notes                                                                                                                         |
 |------------|------------|----------|-------------------------------------------------------------------------------------------------------------------------------|
@@ -308,8 +325,8 @@ rke2a   Ready    control-plane,etcd,master   5m58s   v1.20.15+rke2r2
 rke2b   Ready    control-plane,etcd,master   31s     v1.20.15+rke2r2
 ```
 
-## The Solution (Cloud-Init Provisioning using Harvester!)
-That's a big list of stuff to do and you can imagine it can become very toilsome to manage at scale. Let's leverage our VM provisioner to automate all this effort and turn it into a point and click affair!
+## Cloud-Init Provisioning (using Harvester!)
+The above is a big list of stuff to do and you can imagine it can become very toilsome to manage at scale. Let's leverage our VM provisioner to automate all this effort and turn it into a point and click affair!
 
 In this example, I'll use Harvester to build a cloud-init that I can use as a template for each node. What we do here is capture the above steps in a more script-y format and drop them into a cloud-init yaml spec. 
 
