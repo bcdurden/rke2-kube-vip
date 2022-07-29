@@ -9,8 +9,10 @@ author: Brian Durden
 
 > **Table of Contents**:
 > * [Prerequisites](#prerequisites)
-> * [Manual Provisioning](#manual)
-> * [Cloud Config Provisioning](#cloud-config)
+> * [The Problem](#the-problem)
+> * [The Solution](#the-solution)
+> * [Manual Provisioning](#manual-provisioning)
+> * [Cloud Config Provisioning](#cloud-init-provisioning-using-harvester)
 > * [Conclusion](#conclusion)
 
 ---
