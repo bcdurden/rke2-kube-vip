@@ -32,7 +32,7 @@ On-prem K8S installations tend to lack built-in cloud-native services like `Load
 ### Load Balancing
 ![LoadBalancer Diagram](https://www.cloud4u.com/upload/medialibrary/5a6/0_CCK15OF3DizmOITk.png)
 
-It's primary use is to define a single ingress point that rarely changes and intelligently routes/balances traffic to endpoints running 'behind' it. Sometimes it merely routes in a round-robin approach, other times it will split traffic based on many other factors. Load Balancing itself is VERY important when it comes to High Availability (HA) services. As there may be multiple instances of a single service running, a Load Balancer provides a way to both split the load of traffic as well as handling the case of nodes going down. 
+Its primary use is to define a single ingress point that rarely changes and intelligently routes/balances traffic to endpoints running 'behind' it. Sometimes it merely routes in a round-robin approach, other times it will split traffic based on many other factors. Load Balancing itself is VERY important when it comes to High Availability (HA) services. As there may be multiple instances of a single service running, a Load Balancer provides a way to both split the load of traffic as well as handling the case of nodes going down. 
 
 If we were in AWS, Azure, GCP, etc; we'd be getting the benefit of their cloud-provider services when we need things like a Load Balancer running. Various K8S services running within the cluster have the capability to speak to AWS, for instance, and request a LoadBalancer be created. As on-prem solutions can vary so wildly, we need a solution that works more generally instead of being specific for a cloud.
 
